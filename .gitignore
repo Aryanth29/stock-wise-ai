@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+.DS_Store
+
+# Enviroment
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Build
+dist/
+dist-ssr/
+*.local
+
+# Firebase
+.firebase/
+firestore.indexes.json
+firestore.rules
+storage.rules
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo

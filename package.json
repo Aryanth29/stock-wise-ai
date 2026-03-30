@@ -1,0 +1,11 @@
+{
+  "name": "stockwise-ai",
+  "version": "1.0.0",
+  "description": "StockWise AI - Root Project",
+  "scripts": {
+    "install:all": "npm install --prefix frontend && npm install --prefix backend",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "dev:backend": "npm run dev --prefix backend",
+    "dev": "npx -y concurrently \"npm run dev:frontend\" \"npm run dev:backend\""
+  }
+}

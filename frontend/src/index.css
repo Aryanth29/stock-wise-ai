@@ -1,0 +1,172 @@
+:root {
+  --bg-obsidian: #080A0C;
+  --bg-card: rgba(10, 14, 16, 0.95); /* Ultra Dense Cards */
+  --emerald: #14B8A6; 
+  --emerald-light: #2DD4BF;
+  --emerald-glow: rgba(20, 184, 166, 0.1);
+  --text-main: #F8FAFC;
+  --text-dim: #94A3B8;
+  --glass: rgba(10, 14, 16, 0.95); /* 95% Opaque Obsidian */
+  --glass-border: rgba(255, 255, 255, 0.12);
+  --transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  --nav-width: 80px;
+  --nav-height: 0px;
+  --ios-blur: blur(100px) saturate(200%);
+}
+
+@media (max-width: 1024px) {
+  :root {
+    --nav-width: 0px;
+    --nav-height: 72px;
+  }
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  background-color: var(--bg-obsidian);
+  color: var(--text-main);
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  position: relative;
+  min-height: 100vh;
+}
+
+/* Artistic Obsidian Texture Overlay (Tactile Paper Grain) */
+body::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: var(--bg-obsidian);
+  background-image: 
+    url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E"),
+    linear-gradient(rgba(20, 184, 166, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(20, 184, 166, 0.05) 1px, transparent 1px);
+  background-size: 200px 200px, 80px 80px, 80px 80px;
+  opacity: 0.25; /* High visibility grain */
+  z-index: -1;
+  pointer-events: none;
+  filter: contrast(180%) brightness(120%);
+  mix-blend-mode: overlay;
+}
+
+/* Cinematic Glow Layer */
+body::after {
+  content: "";
+  position: fixed;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle at 50% 50%, rgba(20, 184, 166, 0.04) 0%, transparent 60%);
+  z-index: -2;
+  pointer-events: none;
+  animation: bgPulse 15s infinite alternate ease-in-out;
+}
+
+@keyframes bgPulse {
+  from { transform: scale(1) translate(0, 0); opacity: 0.4; }
+  to { transform: scale(1.1) translate(2%, 2%); opacity: 0.7; }
+}
+
+main {
+  margin-left: var(--nav-width);
+  margin-bottom: var(--nav-height);
+  min-height: 100vh;
+  position: relative;
+  z-index: 10;
+  transition: var(--transition);
+}
+
+h1, h2, h3, h4, .outfit {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+/* iOS 26 Glassy Standard V4.0 (Dense Obsidian) */
+.glass {
+  background: var(--glass);
+  backdrop-filter: var(--ios-blur);
+  -webkit-backdrop-filter: var(--ios-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  box-shadow: 
+    0 12px 60px rgba(0, 0, 0, 0.6),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+.fade-in {
+  animation: fadeIn 1s ease-out forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(15px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--glass-border);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--emerald);
+}
+
+.gradient-text-emerald {
+  background: linear-gradient(135deg, #FFF 0%, var(--emerald-light) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  font-weight: 600;
+  border-radius: 10px;
+  transition: var(--transition);
+}
+
+/* Purple Simulation Override Overlay */
+.simulation-mode body::before {
+  background-image: 
+    url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E"),
+    linear-gradient(rgba(157, 117, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(157, 117, 255, 0.05) 1px, transparent 1px);
+  filter: contrast(110%) brightness(90%) sepia(10%) hue-rotate(240deg);
+  opacity: 0.15;
+}
+
+.simulation-mode body::after {
+  background: radial-gradient(circle at 50% 50%, rgba(59, 47, 92, 0.25) 0%, transparent 65%);
+}
+
+.simulation-mode .glass {
+  background: rgba(59, 47, 92, 0.08); /* Frosted Amethyst */
+  border-color: rgba(157, 117, 255, 0.15);
+}
+
+/* Browser Autofill Reset */
+input:-webkit-autofill,
+input:-webkit-autofill:hover, 
+input:-webkit-autofill:focus, 
+input:-webkit-autofill:active {
+    -webkit-box-shadow: 0 0 0 1000px #0A0D0E inset !important;
+    -webkit-text-fill-color: #F8FAFC !important;
+    transition: background-color 5000s ease-in-out 0s;
+}
