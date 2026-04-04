@@ -8,7 +8,7 @@ const EarningCard = ({ title, value, change, isPositive, timeframe }) => (
       <div className="card-title">{title}</div>
       <div style={{ 
         padding: '4px 8px', 
-        background: isPositive ? 'rgba(20, 184, 166, 0.1)' : 'rgba(239, 68, 68, 0.05)', 
+        background: isPositive ? 'var(--emerald-glow)' : 'rgba(239, 68, 68, 0.05)', 
         color: isPositive ? 'var(--emerald)' : '#EF4444',
         borderRadius: '2px',
         fontSize: '10px',

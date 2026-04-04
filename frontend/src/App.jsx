@@ -1,12 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged, setPersistence, inMemoryPersistence } from 'firebase/auth';
 import { auth } from './lib/firebase';
+
 import Navbar from './components/Navbar';
+import StudioAgent from './components/StudioAgent';
+
 import Landing from './pages/Landing';
 import Dashboard from './pages/Dashboard';
 import News from './pages/News';
 import Strategy from './pages/Strategy';
 import Portfolio from './pages/Portfolio';
+import Banking from './pages/Banking';
 import Login from './pages/Login';
 
 function App() {
@@ -16,28 +20,46 @@ function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Authentication, Theme & Hash Routing
+  const handleLogout = async () => {
+    try {
+      await auth.signOut();
+      setActivePage('landing');
+      if (window.location.hash) window.location.hash = '';
+    } catch (error) {
+      console.error("Logout Error:", error);
+    }
+  };
+
   useEffect(() => {
-    // 1. Sync state with URL Hash
     const syncHashWithPage = () => {
+      if (loading) return;
+
       const hash = window.location.hash.replace('#', '');
-      if (hash && isAuthenticated) {
-        setActivePage(hash);
+
+      if (isAuthenticated) {
+        if (!hash || hash === 'landing') {
+          handleLogout();
+        } else if (hash !== activePage) {
+          setActivePage(hash);
+        }
+      } else {
+        if (hash === 'login') {
+          setActivePage('login');
+        } else {
+          setActivePage('landing');
+        }
       }
     };
 
     window.addEventListener('hashchange', syncHashWithPage);
     window.addEventListener('popstate', syncHashWithPage);
 
-    // Initial Sync on load
     if (isAuthenticated) {
       syncHashWithPage();
     }
 
-    // 2. Clear session on reload
     setPersistence(auth, inMemoryPersistence);
 
-    // 3. Theme mode
     if (isSimulationMode) {
       document.body.classList.add('simulation-mode');
     } else {
@@ -48,7 +70,7 @@ function App() {
       if (currentUser) {
         setUser(currentUser);
         setIsAuthenticated(true);
-        // On first login, if no hash, go dashboard
+
         if (!window.location.hash || window.location.hash === '#login') {
           window.location.hash = '#dashboard';
         }
@@ -66,24 +88,14 @@ function App() {
     };
   }, [isAuthenticated, isSimulationMode]);
 
-  // Sync hash when activePage changes manually
   useEffect(() => {
     if (isAuthenticated && activePage !== 'landing') {
       window.location.hash = `#${activePage}`;
     }
   }, [activePage, isAuthenticated]);
 
-  const handleLogout = async () => {
-    try {
-      await auth.signOut();
-      setActivePage('landing');
-    } catch (error) {
-      console.error("Logout Error:", error);
-    }
-  };
-
   const renderPage = (isSim, setIsSim) => {
-    if (loading) return null; // Or a loading spinner
+    if (loading) return null;
 
     if (!isAuthenticated) {
       if (activePage === 'landing') return <Landing onStart={() => setActivePage('login')} />;
@@ -99,6 +111,8 @@ function App() {
         return <News isSimulationMode={isSim} />;
       case 'strategy':
         return <Strategy isSimulationMode={isSim} />;
+      case 'banking':
+        return <Banking isSimulationMode={isSim} />;
       default:
         return <Dashboard isSimulationMode={isSim} setIsSimulationMode={setIsSim} />;
     }
@@ -106,20 +120,26 @@ function App() {
 
   return (
     <div className={`App fade-in ${isSimulationMode ? 'simulation-mode' : ''}`}>
-      {/* Sidebar Rail */}
+
+      {/* Sidebar */}
       {isAuthenticated && activePage !== 'landing' && (
-        <Navbar 
-          activePage={activePage} 
-          setActivePage={setActivePage} 
+        <Navbar
+          activePage={activePage}
+          setActivePage={setActivePage}
           onLogout={handleLogout}
           isSimulationMode={isSimulationMode}
           setIsSimulationMode={setIsSimulationMode}
         />
       )}
-      
+
       <main style={{ marginLeft: isAuthenticated && activePage !== 'landing' ? 'var(--nav-width)' : '0' }}>
         {renderPage(isSimulationMode, setIsSimulationMode)}
       </main>
+
+      {/* StudioAgent (AI Quant Assistant) */}
+      {isAuthenticated && activePage !== 'landing' && (
+        <StudioAgent />
+      )}
 
       {isAuthenticated && activePage !== 'landing' && (
         <footer style={{

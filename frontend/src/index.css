@@ -4,6 +4,8 @@
   --emerald: #14B8A6; 
   --emerald-light: #2DD4BF;
   --emerald-glow: rgba(20, 184, 166, 0.1);
+  --accent-surface: rgba(20, 184, 166, 0.05);
+  --accent-border: rgba(20, 184, 166, 0.2);
   --text-main: #F8FAFC;
   --text-dim: #94A3B8;
   --glass: rgba(10, 14, 16, 0.95); /* 95% Opaque Obsidian */
@@ -109,8 +111,8 @@ h1, h2, h3, h4, .outfit {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(15px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 ::-webkit-scrollbar {
@@ -142,8 +144,40 @@ button {
   transition: var(--transition);
 }
 
+.btn-accent {
+  background: var(--accent-surface);
+  color: var(--emerald);
+  padding: 6px 14px;
+  font-size: 11px;
+  border-radius: 4px;
+}
+
+.btn-nav {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  font-size: 13px;
+}
+
+.status-card {
+  padding: 16px;
+  border-radius: 12px;
+}
+
 /* Purple Simulation Override Overlay */
-.simulation-mode body::before {
+body.simulation-mode {
+  --emerald: #A855F7;
+  --emerald-light: #C084FC;
+  --emerald-glow: rgba(168, 85, 247, 0.15);
+  --accent-surface: rgba(168, 85, 247, 0.1);
+  --accent-border: rgba(168, 85, 247, 0.3);
+}
+
+body.simulation-mode::before {
   background-image: 
     url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E"),
     linear-gradient(rgba(157, 117, 255, 0.05) 1px, transparent 1px),
@@ -152,13 +186,21 @@ button {
   opacity: 0.15;
 }
 
-.simulation-mode body::after {
+body.simulation-mode::after {
   background: radial-gradient(circle at 50% 50%, rgba(59, 47, 92, 0.25) 0%, transparent 65%);
 }
 
 .simulation-mode .glass {
   background: rgba(59, 47, 92, 0.08); /* Frosted Amethyst */
   border-color: rgba(157, 117, 255, 0.15);
+}
+
+.emerald-light {
+  color: var(--emerald-light) !important;
+}
+
+.emerald-glow {
+  box-shadow: 0 0 20px var(--emerald-glow);
 }
 
 /* Browser Autofill Reset */
@@ -170,3 +212,60 @@ input:-webkit-autofill:active {
     -webkit-text-fill-color: #F8FAFC !important;
     transition: background-color 5000s ease-in-out 0s;
 }
+
+/* Chat Typing Animation */
+.dot-typing {
+  position: relative;
+  left: -9999px;
+  width: 6px;
+  height: 6px;
+  border-radius: 5px;
+  background-color: var(--emerald);
+  color: var(--emerald);
+  box-shadow: 9984px 0 0 0 var(--emerald), 9999px 0 0 0 var(--emerald), 10014px 0 0 0 var(--emerald);
+  animation: dot-typing 1.5s infinite linear;
+  margin: 10px 0 10px 15px;
+}
+
+@keyframes dot-typing {
+  0% {
+    box-shadow: 9984px 0 0 0 var(--emerald), 9999px 0 0 0 var(--emerald), 10014px 0 0 0 var(--emerald);
+  }
+  16.667% {
+    box-shadow: 9984px -6px 0 0 var(--emerald), 9999px 0 0 0 var(--emerald), 10014px 0 0 0 var(--emerald);
+  }
+  33.333% {
+    box-shadow: 9984px 0 0 0 var(--emerald), 9999px 0 0 0 var(--emerald), 10014px 0 0 0 var(--emerald);
+  }
+  50% {
+    box-shadow: 9984px 0 0 0 var(--emerald), 9999px -6px 0 0 var(--emerald), 10014px 0 0 0 var(--emerald);
+  }
+  66.667% {
+    box-shadow: 9984px 0 0 0 var(--emerald), 9999px 0 0 0 var(--emerald), 10014px 0 0 0 var(--emerald);
+  }
+  83.333% {
+    box-shadow: 9984px 0 0 0 var(--emerald), 9999px 0 0 0 var(--emerald), 10014px -6px 0 0 var(--emerald);
+  }
+  100% {
+    box-shadow: 9984px 0 0 0 var(--emerald), 9999px 0 0 0 var(--emerald), 10014px 0 0 0 var(--emerald);
+  }
+}
+
+/* Custom Scrollbar for Chat */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--glass-border);
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--emerald);
+}
+

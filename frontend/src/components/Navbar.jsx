@@ -1,15 +1,19 @@
 import React, { useState } from 'react';
-import { LayoutDashboard, Wallet, Newspaper, BrainCircuit, User, TrendingUp, LogOut, Download, Trash2, Shield, ToggleLeft, ToggleRight, Menu, X } from 'lucide-react';
+import { LayoutDashboard, Wallet, Newspaper, BrainCircuit, User, TrendingUp, LogOut, Download, Trash2, Shield, ToggleLeft, ToggleRight, Menu, X, CreditCard, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { db, auth } from '../lib/firebase';
+import { doc, updateDoc, deleteDoc, collection, getDocs, writeBatch, deleteField } from 'firebase/firestore';
 
 const Navbar = ({ activePage, setActivePage, onLogout, isSimulationMode, setIsSimulationMode }) => {
   const [showAccount, setShowAccount] = useState(false);
+  const [isWiping, setIsWiping] = useState(false);
 
   const navItems = [
     { id: 'dashboard', label: 'Analysis', icon: <LayoutDashboard size={20} /> },
     { id: 'portfolio', label: 'Portfolio', icon: <Wallet size={20} /> },
     { id: 'news', label: 'Signals', icon: <Newspaper size={20} /> },
     { id: 'strategy', label: 'Intelligence', icon: <BrainCircuit size={20} /> },
+    { id: 'banking', label: 'Banking', icon: <CreditCard size={20} /> },
   ];
 
   const handleExport = () => {
@@ -21,6 +25,38 @@ const Navbar = ({ activePage, setActivePage, onLogout, isSimulationMode, setIsSi
     a.download = 'stockwise_studio_export.json';
     a.click();
     setShowAccount(false);
+  };
+
+  const handleWipe = async () => {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    if (window.confirm("CRITICAL PROTOCOL: Wiping the studio will permanently erase all practice capital, actual holdings, and banking credentials. Proceed with full reset?")) {
+      setIsWiping(true);
+      try {
+        const userRef = doc(db, 'users', user.uid);
+        
+        // 1. Reset main document
+        await updateDoc(userRef, {
+          balance: 100000,
+          holdings: 0,
+          bankDetails: deleteField()
+        });
+
+        // 2. Clear transactions sub-collection
+        const transRef = collection(db, 'users', user.uid, 'transactions');
+        const snap = await getDocs(transRef);
+        const batch = writeBatch(db);
+        snap.forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+
+        setShowAccount(false);
+      } catch (err) {
+        console.error("Wipe Protcol Failure:", err);
+      } finally {
+        setIsWiping(false);
+      }
+    }
   };
 
   return (
@@ -118,7 +154,7 @@ const Navbar = ({ activePage, setActivePage, onLogout, isSimulationMode, setIsSi
             style={{ 
               background: 'transparent', 
               border: 'none', 
-              color: isSimulationMode ? '#A855F7' : 'var(--text-dim)', 
+              color: isSimulationMode ? 'var(--emerald)' : 'var(--text-dim)', 
               transition: 'var(--transition)',
               cursor: 'pointer',
               display: 'flex',
@@ -230,14 +266,18 @@ const Navbar = ({ activePage, setActivePage, onLogout, isSimulationMode, setIsSi
               </button>
               <button 
                 onClick={() => setIsSimulationMode(!isSimulationMode)}
-                style={{ width: '100%', textAlign: 'left', background: 'transparent', color: isSimulationMode ? '#A855F7' : 'var(--text-main)', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '12px', padding: '10px' }}
+                style={{ width: '100%', textAlign: 'left', background: 'transparent', color: isSimulationMode ? 'var(--emerald)' : 'var(--text-main)', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '12px', padding: '10px' }}
               >
                 {isSimulationMode ? <ToggleRight size={16} /> : <ToggleLeft size={16} />} 
                 {isSimulationMode ? 'Practice Mode: ON' : 'Practice Mode: OFF'}
               </button>
               <div style={{ height: '1px', background: 'var(--glass-border)', margin: '8px 0' }}></div>
-              <button style={{ width: '100%', textAlign: 'left', background: 'transparent', color: '#EF4444', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '12px', padding: '10px' }}>
-                <Trash2 size={16} /> Pure Studio Wipe
+              <button 
+                onClick={handleWipe}
+                disabled={isWiping}
+                style={{ width: '100%', textAlign: 'left', background: 'transparent', color: '#EF4444', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '12px', padding: '10px', opacity: isWiping ? 0.5 : 1 }}
+              >
+                {isWiping ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />} Pure Studio Wipe
               </button>
               <button 
                 onClick={onLogout}
