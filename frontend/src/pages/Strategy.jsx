@@ -2,6 +2,11 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Send, Cpu, ChevronDown, ChevronUp, Zap, ShieldCheck } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
+// ✅ Same Gemini config as StudioAgent.jsx — unified API
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+const SYSTEM_PROMPT = 'You are StockWise AI, a professional quant trading assistant for Indian stock markets (BSE, NSE). Be concise, insightful, and conversational like a senior quant mentor.';
+
 const Message = ({ msg }) => {
   const [showThought, setShowThought] = useState(false);
 
@@ -59,7 +64,8 @@ const Message = ({ msg }) => {
         background: msg.role === 'user' ? 'rgba(20, 184, 166, 0.05)' : 'transparent',
         padding: msg.role === 'user' ? '20px' : '0',
         borderRadius: '4px',
-        border: msg.role === 'user' ? '1px solid var(--glass-border)' : 'none'
+        border: msg.role === 'user' ? '1px solid var(--glass-border)' : 'none',
+        whiteSpace: 'pre-wrap'
       }}>
         {msg.text}
       </div>
@@ -85,25 +91,34 @@ const Strategy = () => {
 
   const handleSend = async () => {
     if (!input.trim() || isThinking) return;
-    const currentInput = input;
-    setMessages(prev => [...prev, { role: 'user', text: currentInput }]);
+    const userText = input.trim();
+    setMessages(prev => [...prev, { role: 'user', text: userText }]);
     setInput('');
     setIsThinking(true);
 
     try {
-      const response = await fetch('/api/ai/chat', {
+      const res = await fetch(GEMINI_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: currentInput, context: { page: 'intelligence' } })
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: SYSTEM_PROMPT + '\n\n' + userText }] }]
+        }),
       });
-      const data = await response.json();
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error?.message || `HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+      const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response.';
       setMessages(prev => [...prev, { 
         role: 'ai', 
-        text: data.reply || data.error,
-        thought: data.thought || "Processing technical resistance and market sentiment."
+        text: reply,
+        thought: 'Processed via Gemini 2.5 Flash · Direct API · StockWise Quant Protocol'
       }]);
     } catch (error) {
-      setMessages(prev => [...prev, { role: 'ai', text: "Critical Error: Engine failed to respond.", thought: error.message }]);
+      setMessages(prev => [...prev, { role: 'ai', text: `Error: ${error.message}`, thought: error.message }]);
     } finally {
       setIsThinking(false);
     }

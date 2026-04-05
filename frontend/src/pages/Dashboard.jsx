@@ -1,14 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { TrendingUp, Zap, Search, Send, Loader2, PlayCircle, ShoppingCart, Info, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { TrendingUp, Search, Loader2, PlayCircle, ShoppingCart, Info, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { db, auth } from '../lib/firebase';
 import { doc, setDoc, updateDoc, onSnapshot } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 
-const GEMINI_API_KEY = 'AIzaSyDAyFIVqvmkq9weR5BhqcyITbGH87JAi0M';
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
-const SYSTEM_PROMPT = 'You are StockWise AI, a professional quant trading assistant for Indian stock markets (BSE, NSE). Be concise, insightful, and conversational like a senior quant mentor.';
 
 const data = [
   { name: '10:00', price: 4200 }, { name: '11:00', price: 4500 },
@@ -44,61 +41,12 @@ const StatCard = ({ title, value, change, isPositive, label, isSim }) => (
 const Dashboard = ({ isSimulationMode, setIsSimulationMode }) => {
   const [search, setSearch] = useState('');
   const [isSearching, setIsSearching] = useState(false);
-  const [prompt, setPrompt] = useState('');
-  const [messages, setMessages] = useState([]);
-  const [isThinking, setIsThinking] = useState(false);
-  const chatEndRef = useRef(null);
-
-  // Auto-scroll to bottom of chat
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  const handleSendMessage = async () => {
-    if (!prompt.trim() || isThinking) return;
-
-    const userMessage = prompt.trim();
-    setPrompt('');
-    setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
-    setIsThinking(true);
-
-    try {
-      const res = await fetch(GEMINI_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{
-            role: 'user',
-            parts: [{ text: SYSTEM_PROMPT + '\n\n' + userMessage }]
-          }]
-        }),
-      });
-
-      if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.error?.message || `HTTP ${res.status}`);
-      }
-
-      const data = await res.json();
-      const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response.';
-      setMessages(prev => [...prev, { role: 'ai', content: reply }]);
-    } catch (error) {
-      console.error('Gemini Error:', error);
-      setMessages(prev => [...prev, {
-        role: 'ai',
-        content: `Error: ${error.message}`,
-      }]);
-    } finally {
-      setIsThinking(false);
-    }
-  };
-
   const [searchResult, setSearchResult] = useState(null);
-  
-  // Execution Logic (Firestore Sync)
   const [simBalance, setSimBalance] = useState(100000);
   const [simHoldings, setSimHoldings] = useState(0);
   const [orderQty, setOrderQty] = useState(1);
+
+
 
   // Sync with Firestore
   React.useEffect(() => {
@@ -127,7 +75,7 @@ const Dashboard = ({ isSimulationMode, setIsSimulationMode }) => {
     if (e.key === 'Enter' && search.trim()) {
       setIsSearching(true);
       try {
-        const response = await fetch(`http://localhost:5000/api/stocks/${search.toUpperCase()}`);
+        const response = await fetch(`https://stock-wise-ai.onrender.com/api/stocks/${search.toUpperCase()}`);
         const data = await response.json();
         setSearchResult(data);
       } catch (error) {
@@ -373,110 +321,6 @@ const Dashboard = ({ isSimulationMode, setIsSimulationMode }) => {
             </motion.div>
           )}
         </AnimatePresence>
-
-        {/* Studio Agent Overlay */}
-        <div className="glass agent-panel" style={{ display: 'flex', flexDirection: 'column', height: '500px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', flexShrink: 0 }}>
-            <Zap size={20} style={{ color: 'var(--emerald)' }} strokeWidth={3} />
-            <h3 className="outfit" style={{ fontSize: '18px' }}>Studio Agent</h3>
-          </div>
-
-          {/* Chat History */}
-          <div style={{ 
-            flex: 1, 
-            overflowY: 'auto', 
-            paddingRight: '8px',
-            marginBottom: '20px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '16px'
-          }} className="custom-scrollbar">
-            {messages.length === 0 ? (
-              <p style={{ fontSize: '12px', color: 'var(--text-dim)', lineHeight: '1.7', opacity: 0.7 }}>
-                {isSimulationMode ? "Tutorial Engine ready. I will guide you through your first simulated trade. Search for a stock to execute." : "Awaiting specific instruction. I am monitoring resistance levels at 22,500."}
-              </p>
-            ) : (
-              messages.map((msg, idx) => (
-                <div key={idx} style={{ 
-                  alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
-                  maxWidth: '90%'
-                }}>
-                  <div style={{ 
-                    padding: '12px 16px', 
-                    borderRadius: '12px',
-                    fontSize: '13px',
-                    lineHeight: '1.5',
-                    background: msg.role === 'user' ? 'var(--emerald)' : 'rgba(255,255,255,0.05)',
-                    color: msg.role === 'user' ? '#fff' : 'var(--text-main)',
-                    border: msg.role === 'user' ? 'none' : '1px solid var(--glass-border)',
-                  }}>
-                    {msg.content}
-                  </div>
-                  
-                  {msg.thought && (
-                    <details style={{ marginTop: '8px' }}>
-                      <summary style={{ 
-                        fontSize: '9px', 
-                        color: 'var(--emerald)', 
-                        cursor: 'pointer', 
-                        fontWeight: '800', 
-                        letterSpacing: '0.1em',
-                        listStyle: 'none'
-                      }}>
-                        VIEW ANALYSIS PROCESS
-                      </summary>
-                      <div style={{ 
-                        marginTop: '8px', 
-                        padding: '10px', 
-                        fontSize: '11px', 
-                        color: 'var(--text-dim)', 
-                        background: 'rgba(0,0,0,0.2)', 
-                        borderRadius: '6px',
-                        borderLeft: '2px solid var(--emerald)',
-                        lineHeight: '1.6'
-                      }}>
-                        {msg.thought}
-                      </div>
-                    </details>
-                  )}
-                </div>
-              ))
-            )}
-            {isThinking && (
-              <div style={{ display: 'flex', gap: '8px', padding: '12px' }}>
-                <span className="dot-typing"></span>
-              </div>
-            )}
-            <div ref={chatEndRef} />
-          </div>
-
-          {/* Input Area */}
-          <div style={{ position: 'relative', flexShrink: 0 }}>
-            <input 
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-              placeholder="ASK QUANT QUESTIONS..."
-              className="agent-input"
-              disabled={isThinking}
-            />
-            <button 
-              onClick={handleSendMessage}
-              disabled={isThinking}
-              style={{ 
-                position: 'absolute', 
-                right: '14px', 
-                top: '50%', 
-                transform: 'translateY(-50%)', 
-                background: 'transparent', 
-                color: isThinking ? 'var(--text-dim)' : 'var(--emerald)',
-                transition: '0.2s'
-              }}
-            >
-              {isThinking ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
-            </button>
-          </div>
-        </div>
 
         {/* Signals Panel */}
         <div className="glass signals-panel">
