@@ -248,8 +248,8 @@ const Dashboard = ({ isSimulationMode, setIsSimulationMode }) => {
                 }}>{fav.change}%</span>
               </div>
               <div className="outfit" style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '12px' }}>₹{fav.price}</div>
-              <div style={{ height: '40px', width: '100%' }}>
-                <ResponsiveContainer width="100%" height="100%">
+              <div style={{ height: '40px', width: '100%', minWidth: '100%' }}>
+                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={40}>
                   <AreaChart data={miniData}>
                     <YAxis domain={['dataMin - 5', 'dataMax + 5']} hide />
                     <Area 
@@ -275,8 +275,8 @@ const Dashboard = ({ isSimulationMode, setIsSimulationMode }) => {
               <h2 className="outfit" style={{ fontSize: '22px' }}>Studio Benchmarks</h2>
           </div>
           
-          <div style={{ width: '100%', height: '360px' }}>
-            <ResponsiveContainer width="100%" height={360}>
+          <div style={{ width: '100%', height: '360px', minHeight: '360px' }}>
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={360}>
               <AreaChart data={data}>
                 <defs>
                   <linearGradient id="colorPrice" x1="0" y1="0" x2="0" y2="1">

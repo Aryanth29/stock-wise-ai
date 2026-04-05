@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { onAuthStateChanged, setPersistence, inMemoryPersistence } from 'firebase/auth';
+import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from './lib/firebase';
 
 import Navbar from './components/Navbar';
@@ -58,7 +58,7 @@ function App() {
       syncHashWithPage();
     }
 
-    setPersistence(auth, inMemoryPersistence);
+    // setPersistence(auth, inMemoryPersistence); // ❌ REMOVED: This causes login to wipe on every refresh
 
     if (isSimulationMode) {
       document.body.classList.add('simulation-mode');

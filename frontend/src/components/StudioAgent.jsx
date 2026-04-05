@@ -12,7 +12,9 @@ import {
   where, 
   getDocs, 
   deleteDoc, 
-  doc 
+  doc,
+  updateDoc,
+  limit
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 
@@ -21,6 +23,7 @@ const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemi
 const SYSTEM_PROMPT = "You are StockWise AI, a professional quant trading assistant for Indian stock markets (BSE, NSE). Be concise, insightful, and conversational like a senior quant mentor.";
 
 export default function StudioAgent() {
+  const [isOpen, setIsOpen] = useState(false);
   const [activeSessionId, setActiveSessionId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
@@ -157,6 +160,10 @@ export default function StudioAgent() {
       setIsTyping(false);
     }
   };
+
+  useEffect(() => {
+    console.log("StudioAgent isOpen:", isOpen);
+  }, [isOpen]);
 
   return (
     <div

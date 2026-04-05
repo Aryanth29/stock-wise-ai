@@ -285,7 +285,30 @@ const Strategy = () => {
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--emerald)', fontSize: '11px', fontWeight: 'bold', marginBottom: '8px' }}>
               <Zap size={14} /> INTELLIGENCE STUDIO
             </div>
-            <h1 className="outfit" style={{ fontSize: '36px' }}>Cognitive Analysis</h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+              <h1 className="outfit" style={{ fontSize: '36px' }}>Cognitive Analysis</h1>
+              <motion.button
+                whileHover={{ scale: 1.05, background: 'rgba(20, 184, 166, 0.15)' }}
+                whileTap={{ scale: 0.95 }}
+                onClick={startNewSession}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '8px 16px',
+                  borderRadius: '12px',
+                  background: 'rgba(20, 184, 166, 0.08)',
+                  border: '1px solid rgba(20, 184, 166, 0.3)',
+                  color: 'var(--emerald)',
+                  fontSize: '11px',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  marginTop: '6px'
+                }}
+              >
+                <Plus size={14} /> NEW CHAT
+              </motion.button>
+            </div>
           </div>
           <div className="glass" style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '10px', borderColor: 'var(--emerald-glow)' }}>
             <ShieldCheck size={16} className="emerald" />

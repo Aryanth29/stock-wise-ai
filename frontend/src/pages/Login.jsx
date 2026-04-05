@@ -1,6 +1,12 @@
 import React, { useState } from 'react';
 import { auth, googleProvider } from '../lib/firebase';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup } from 'firebase/auth';
+import { 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, 
+  signInWithPopup, 
+  signInWithRedirect,
+  getRedirectResult 
+} from 'firebase/auth';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ShieldCheck, Mail, Lock, LogIn, TrendingUp, UserPlus, AlertCircle } from 'lucide-react';
 
@@ -15,10 +21,9 @@ const Login = () => {
     setLoading(true);
     setError('');
     try {
-      await signInWithPopup(auth, googleProvider);
+      await signInWithRedirect(auth, googleProvider);
     } catch (err) {
       setError(err.message.replace('Firebase:', ''));
-    } finally {
       setLoading(false);
     }
   };
