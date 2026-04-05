@@ -1,6 +1,20 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Cpu, ChevronDown, ChevronUp, Zap, ShieldCheck } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { db, auth } from '../lib/firebase';
+import { 
+  collection, 
+  addDoc, 
+  query, 
+  orderBy, 
+  onSnapshot, 
+  serverTimestamp, 
+  where, 
+  getDocs, 
+  deleteDoc, 
+  doc 
+} from "firebase/firestore";
+import { onAuthStateChanged } from "firebase/auth";
 
 // ✅ Same Gemini config as StudioAgent.jsx — unified API
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
@@ -74,25 +88,78 @@ const Message = ({ msg }) => {
 };
 
 const Strategy = () => {
-  const [messages, setMessages] = useState([
-    { 
-      role: 'ai', 
-      text: 'Studio active. I am ready to process your trading criteria. What market segment should we analyze first?',
-      thought: 'Engine initialized. Waiting for user input to perform technical analysis on NSE/BSE segments. Security: Session-only login active.'
-    }
-  ]);
+  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
+  const [user, setUser] = useState(null);
   const scrollRef = useRef(null);
+
+  // Auth & Sync Logic (Shared with StudioAgent)
+  useEffect(() => {
+    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      if (currentUser) {
+        // Sync Messages
+        const q = query(
+          collection(db, "users", currentUser.uid, "messages"),
+          orderBy("timestamp", "asc")
+        );
+        
+        const unsubscribeMessages = onSnapshot(q, (snapshot) => {
+          const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          if (msgs.length === 0) {
+            setMessages([{ 
+              role: 'ai', 
+              text: 'Studio active. I am ready to process your trading criteria. What market segment should we analyze first?',
+              thought: 'Engine initialized. Waiting for user input to perform technical analysis on NSE/BSE segments. Security: Session-only login active.'
+            }]);
+          } else {
+            setMessages(msgs);
+          }
+        });
+
+        // Cleanup: Remove messages older than 30 days
+        const cleanupOldMessages = async () => {
+          const thirtyDaysAgo = new Date();
+          thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+          
+          const oldQuery = query(
+            collection(db, "users", currentUser.uid, "messages"),
+            where("timestamp", "<", thirtyDaysAgo)
+          );
+          
+          const oldDocs = await getDocs(oldQuery);
+          oldDocs.forEach(async (oldDoc) => {
+            await deleteDoc(doc(db, "users", currentUser.uid, "messages", oldDoc.id));
+          });
+        };
+        cleanupOldMessages();
+
+        return () => unsubscribeMessages();
+      } else {
+        setMessages([{ role: 'ai', text: 'Please log in to access the Intelligence Studio history.' }]);
+      }
+    });
+
+    return () => unsubscribeAuth();
+  }, []);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, isThinking]);
 
   const handleSend = async () => {
-    if (!input.trim() || isThinking) return;
+    if (!input.trim() || isThinking || !user) return;
     const userText = input.trim();
-    setMessages(prev => [...prev, { role: 'user', text: userText }]);
+    
+    // 1. Save User Message to Firestore
+    const messagesRef = collection(db, "users", user.uid, "messages");
+    await addDoc(messagesRef, {
+      role: "user",
+      text: userText,
+      timestamp: serverTimestamp()
+    });
+
     setInput('');
     setIsThinking(true);
 
@@ -112,13 +179,18 @@ const Strategy = () => {
 
       const data = await res.json();
       const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response.';
-      setMessages(prev => [...prev, { 
-        role: 'ai', 
+      
+      // 2. Save AI Response to Firestore
+      await addDoc(messagesRef, {
+        role: "ai", 
         text: reply,
-        thought: 'Processed via Gemini 2.5 Flash · Direct API · StockWise Quant Protocol'
-      }]);
+        thought: 'Processed via Gemini 2.5 Flash · Direct API System · StockWise Quant Protocol',
+        timestamp: serverTimestamp()
+      });
+
     } catch (error) {
-      setMessages(prev => [...prev, { role: 'ai', text: `Error: ${error.message}`, thought: error.message }]);
+      console.error("Gemini Error:", error);
+      setMessages(prev => [...prev, { role: 'ai', text: "I'm having trouble connecting right now. Please try again in a moment.", thought: 'Connection error. Check network or API status.' }]);
     } finally {
       setIsThinking(false);
     }

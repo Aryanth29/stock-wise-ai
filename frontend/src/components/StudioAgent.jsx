@@ -1,6 +1,20 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Bot, User, Send, Sparkles, X } from "lucide-react";
+import { db, auth } from "../lib/firebase";
+import { 
+  collection, 
+  addDoc, 
+  query, 
+  orderBy, 
+  onSnapshot, 
+  serverTimestamp, 
+  where, 
+  getDocs, 
+  deleteDoc, 
+  doc 
+} from "firebase/firestore";
+import { onAuthStateChanged } from "firebase/auth";
 
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
@@ -8,12 +22,58 @@ const SYSTEM_PROMPT = "You are StockWise AI, a professional quant trading assist
 
 export default function StudioAgent() {
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState([
-    { role: "ai", text: "Hello! I'm StockWise AI — your quant assistant. Ask me anything about stocks, indicators, or market strategy." },
-  ]);
+  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+  const [user, setUser] = useState(null);
   const scrollRef = useRef(null);
+
+  // Auth & Sync Logic
+  useEffect(() => {
+    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      if (currentUser) {
+        // Sync Messages
+        const q = query(
+          collection(db, "users", currentUser.uid, "messages"),
+          orderBy("timestamp", "asc")
+        );
+        
+        const unsubscribeMessages = onSnapshot(q, (snapshot) => {
+          const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          // If no messages exists yet, show welcome message (don't save to DB yet)
+          if (msgs.length === 0) {
+            setMessages([{ role: "ai", text: "Hello! I'm StockWise AI — your quant assistant. Ask me anything about stocks, indicators, or market strategy." }]);
+          } else {
+            setMessages(msgs);
+          }
+        });
+
+        // Cleanup: Remove messages older than 30 days
+        const cleanupOldMessages = async () => {
+          const thirtyDaysAgo = new Date();
+          thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+          
+          const oldQuery = query(
+            collection(db, "users", currentUser.uid, "messages"),
+            where("timestamp", "<", thirtyDaysAgo)
+          );
+          
+          const oldDocs = await getDocs(oldQuery);
+          oldDocs.forEach(async (oldDoc) => {
+            await deleteDoc(doc(db, "users", currentUser.uid, "messages", oldDoc.id));
+          });
+        };
+        cleanupOldMessages();
+
+        return () => unsubscribeMessages();
+      } else {
+        setMessages([{ role: "ai", text: "Please log in to access your quant assistant history." }]);
+      }
+    });
+
+    return () => unsubscribeAuth();
+  }, []);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -22,9 +82,17 @@ export default function StudioAgent() {
   }, [messages, isTyping]);
 
   const handleSend = async () => {
-    if (!input.trim() || isTyping) return;
+    if (!input.trim() || isTyping || !user) return;
     const userText = input.trim();
-    setMessages((prev) => [...prev, { role: "user", text: userText }]);
+    
+    // 1. Save User Message to Firestore
+    const messagesRef = collection(db, "users", user.uid, "messages");
+    await addDoc(messagesRef, {
+      role: "user",
+      text: userText,
+      timestamp: serverTimestamp()
+    });
+
     setInput("");
     setIsTyping(true);
 
@@ -44,10 +112,18 @@ export default function StudioAgent() {
 
       const data = await res.json();
       const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || "No response.";
-      setMessages((prev) => [...prev, { role: "ai", text: reply }]);
+      
+      // 2. Save AI Response to Firestore
+      await addDoc(messagesRef, {
+        role: "ai",
+        text: reply,
+        timestamp: serverTimestamp()
+      });
+
     } catch (err) {
       console.error("Gemini Error:", err);
-      setMessages((prev) => [...prev, { role: "ai", text: `Error: ${err.message}` }]);
+      // We don't save errors to long-term history, just show it
+      setMessages((prev) => [...prev, { role: "ai", text: "I'm having trouble connecting right now. Please try again in a moment." }]);
     } finally {
       setIsTyping(false);
     }
