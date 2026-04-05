@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Cpu, ChevronDown, ChevronUp, Zap, ShieldCheck } from 'lucide-react';
+import { Send, Cpu, ChevronDown, ChevronUp, Zap, ShieldCheck, Plus, MessageSquare, History, Trash2, Clock } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { db, auth } from '../lib/firebase';
 import { 
@@ -12,7 +12,9 @@ import {
   where, 
   getDocs, 
   deleteDoc, 
-  doc 
+  doc,
+  updateDoc,
+  limit
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 
@@ -88,77 +90,142 @@ const Message = ({ msg }) => {
 };
 
 const Strategy = () => {
+  const [sessions, setSessions] = useState([]);
+  const [activeSessionId, setActiveSessionId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
   const [user, setUser] = useState(null);
   const scrollRef = useRef(null);
 
-  // Auth & Sync Logic (Shared with StudioAgent)
+  // 1. Auth & Initial Session Load
   useEffect(() => {
-    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
-        // Sync Messages
-        const q = query(
-          collection(db, "users", currentUser.uid, "messages"),
-          orderBy("timestamp", "asc")
+        // Sync Sessions List
+        const sessionsQuery = query(
+          collection(db, "users", currentUser.uid, "sessions"),
+          orderBy("lastModified", "desc")
         );
         
-        const unsubscribeMessages = onSnapshot(q, (snapshot) => {
-          const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-          if (msgs.length === 0) {
-            setMessages([{ 
-              role: 'ai', 
-              text: 'Studio active. I am ready to process your trading criteria. What market segment should we analyze first?',
-              thought: 'Engine initialized. Waiting for user input to perform technical analysis on NSE/BSE segments. Security: Session-only login active.'
-            }]);
-          } else {
-            setMessages(msgs);
+        onSnapshot(sessionsQuery, (snapshot) => {
+          const sessList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          setSessions(sessList);
+          
+          // Auto-select latest session if none active
+          if (!activeSessionId && sessList.length > 0) {
+            setActiveSessionId(sessList[0].id);
           }
         });
 
-        // Cleanup: Remove messages older than 30 days
-        const cleanupOldMessages = async () => {
+        // 30-Day Cleanup (Sessions)
+        const cleanup = async () => {
           const thirtyDaysAgo = new Date();
           thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-          
-          const oldQuery = query(
-            collection(db, "users", currentUser.uid, "messages"),
-            where("timestamp", "<", thirtyDaysAgo)
-          );
-          
+          const oldQuery = query(collection(db, "users", currentUser.uid, "sessions"), where("lastModified", "<", thirtyDaysAgo));
           const oldDocs = await getDocs(oldQuery);
-          oldDocs.forEach(async (oldDoc) => {
-            await deleteDoc(doc(db, "users", currentUser.uid, "messages", oldDoc.id));
-          });
+          oldDocs.forEach(async (d) => await deleteDoc(doc(db, "users", currentUser.uid, "sessions", d.id)));
         };
-        cleanupOldMessages();
+        cleanup();
+      }
+    });
+    return () => unsubscribeAuth();
+  }, []);
 
-        return () => unsubscribeMessages();
+  // 2. Sync Messages for Active Session
+  useEffect(() => {
+    if (!user || !activeSessionId) return;
+
+    const q = query(
+      collection(db, "users", user.uid, "sessions", activeSessionId, "messages"),
+      orderBy("timestamp", "asc")
+    );
+    
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      if (msgs.length === 0) {
+        setMessages([{ 
+          role: 'ai', 
+          text: 'Studio active. I am ready to process your trading criteria. What market segment should we analyze first?',
+          thought: 'Engine initialized. Waiting for user input. Security: AES-256 session active.'
+        }]);
       } else {
-        setMessages([{ role: 'ai', text: 'Please log in to access the Intelligence Studio history.' }]);
+        setMessages(msgs);
       }
     });
 
-    return () => unsubscribeAuth();
-  }, []);
+    return () => unsubscribe();
+  }, [user, activeSessionId]);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, isThinking]);
 
+  const generateTitle = async (firstPrompt) => {
+    try {
+      const res = await fetch(GEMINI_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: `Generate a 3-4 word professional title for this stock analysis query. Respond with ONLY the title. No quotes. Query: ${firstPrompt}` }] }]
+        }),
+      });
+      const data = await res.json();
+      return data.candidates?.[0]?.content?.parts?.[0]?.text || 'New Analysis';
+    } catch (e) {
+      return 'Market Analysis';
+    }
+  };
+
+  const startNewSession = async () => {
+    if (!user) return;
+    const newSess = await addDoc(collection(db, "users", user.uid, "sessions"), {
+      title: 'New Analysis...',
+      createdAt: serverTimestamp(),
+      lastModified: serverTimestamp()
+    });
+    setActiveSessionId(newSess.id);
+  };
+
   const handleSend = async () => {
     if (!input.trim() || isThinking || !user) return;
     const userText = input.trim();
     
-    // 1. Save User Message to Firestore
-    const messagesRef = collection(db, "users", user.uid, "messages");
+    let currentSessionId = activeSessionId;
+    
+    // Create session if none exists
+    if (!currentSessionId) {
+      const newSess = await addDoc(collection(db, "users", user.uid, "sessions"), {
+        title: 'Initializing...',
+        createdAt: serverTimestamp(),
+        lastModified: serverTimestamp()
+      });
+      currentSessionId = newSess.id;
+      setActiveSessionId(currentSessionId);
+    }
+
+    const messagesRef = collection(db, "users", user.uid, "sessions", currentSessionId, "messages");
+    
+    // 1. Save User Message
     await addDoc(messagesRef, {
       role: "user",
       text: userText,
       timestamp: serverTimestamp()
     });
+
+    // Update session title if it's the first message
+    if (messages.length <= 1) {
+      const newTitle = await generateTitle(userText);
+      await updateDoc(doc(db, "users", user.uid, "sessions", currentSessionId), {
+        title: newTitle,
+        lastModified: serverTimestamp()
+      });
+    } else {
+      await updateDoc(doc(db, "users", user.uid, "sessions", currentSessionId), {
+        lastModified: serverTimestamp()
+      });
+    }
 
     setInput('');
     setIsThinking(true);
@@ -172,15 +239,10 @@ const Strategy = () => {
         }),
       });
 
-      if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.error?.message || `HTTP ${res.status}`);
-      }
-
       const data = await res.json();
       const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response.';
       
-      // 2. Save AI Response to Firestore
+      // 2. Save AI Response
       await addDoc(messagesRef, {
         role: "ai", 
         text: reply,
@@ -196,82 +258,191 @@ const Strategy = () => {
     }
   };
 
+  const deleteSession = async (sid, e) => {
+    e.stopPropagation();
+    if (!window.confirm("Delete this analysis session?")) return;
+    await deleteDoc(doc(db, "users", user.uid, "sessions", sid));
+    if (activeSessionId === sid) setActiveSessionId(null);
+  };
+
   return (
     <div className="fade-in" style={{
-      maxWidth: '1000px',
-      margin: '0 auto',
-      padding: '40px 60px',
-      height: '100vh',
       display: 'flex',
-      flexDirection: 'column'
+      height: '100vh',
+      background: 'var(--bg-main)',
+      overflow: 'hidden'
     }}>
-      <div style={{ marginBottom: '48px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--emerald)', fontSize: '11px', fontWeight: 'bold', marginBottom: '8px' }}>
-            <Zap size={14} /> INTELLIGENCE STUDIO
-          </div>
-          <h1 className="outfit" style={{ fontSize: '36px' }}>Cognitive Analysis</h1>
-        </div>
-        <div className="glass" style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '10px', borderColor: 'var(--emerald-glow)' }}>
-          <ShieldCheck size={16} className="emerald" />
-          <span style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--text-dim)' }}>AES-256 SECURED SESSION</span>
-        </div>
-      </div>
-
-      <div ref={scrollRef} style={{ 
-        flex: '1', 
-        overflowY: 'auto', 
-        display: 'flex', 
+      {/* Main Chat Area */}
+      <div style={{
+        flex: 1,
+        display: 'flex',
         flexDirection: 'column',
-        marginBottom: '40px',
-        paddingRight: '12px'
+        padding: '40px 60px',
+        position: 'relative'
       }}>
-        {messages.map((m, i) => <Message key={i} msg={m} />)}
-        
-        {isThinking && (
-          <motion.div style={{ color: 'var(--emerald)', fontSize: '12px', fontWeight: 'bold', letterSpacing: '0.1em' }}>
-            ENGINE BUSY : ANALYZING LIVE NSE CONTEXT...
-          </motion.div>
-        )}
+        <div style={{ marginBottom: '48px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--emerald)', fontSize: '11px', fontWeight: 'bold', marginBottom: '8px' }}>
+              <Zap size={14} /> INTELLIGENCE STUDIO
+            </div>
+            <h1 className="outfit" style={{ fontSize: '36px' }}>Cognitive Analysis</h1>
+          </div>
+          <div className="glass" style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '10px', borderColor: 'var(--emerald-glow)' }}>
+            <ShieldCheck size={16} className="emerald" />
+            <span style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--text-dim)' }}>AES-256 SECURED SESSION</span>
+          </div>
+        </div>
+
+        <div ref={scrollRef} className="custom-scrollbar" style={{ 
+          flex: '1', 
+          overflowY: 'auto', 
+          display: 'flex', 
+          flexDirection: 'column',
+          marginBottom: '40px',
+          paddingRight: '12px'
+        }}>
+          {messages.map((m, i) => <Message key={i} msg={m} />)}
+          
+          {isThinking && (
+            <motion.div style={{ color: 'var(--emerald)', fontSize: '12px', fontWeight: 'bold', letterSpacing: '0.1em' }}>
+              ENGINE BUSY : ANALYZING LIVE NSE CONTEXT...
+            </motion.div>
+          )}
+        </div>
+
+        <div style={{ position: 'relative', borderTop: '1px solid var(--glass-border)', padding: '32px 0' }}>
+          <input 
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+            placeholder="ENTER STUDIO PROMPT..."
+            style={{
+              width: '100%',
+              background: 'rgba(0,0,0,0.3)',
+              border: '1px solid var(--glass-border)',
+              borderRadius: '12px',
+              padding: '22px 28px',
+              color: 'var(--text-main)',
+              fontSize: '14px',
+              letterSpacing: '0.05em',
+              outline: 'none'
+            }}
+          />
+          <button 
+            onClick={handleSend}
+            disabled={isThinking}
+            style={{
+              position: 'absolute',
+              right: '16px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              background: 'var(--emerald)',
+              color: '#000',
+              padding: '12px 24px',
+              borderRadius: '10px',
+              fontSize: '12px',
+              fontWeight: '800',
+              letterSpacing: '0.1em'
+            }}
+          >
+            {isThinking ? '...' : 'EXECUTE'}
+          </button>
+        </div>
       </div>
 
-      <div style={{ position: 'relative', borderTop: '1px solid var(--glass-border)', padding: '32px 0' }}>
-        <input 
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-          placeholder="ENTER STUDIO PROMPT..."
-          style={{
-            width: '100%',
-            background: 'rgba(0,0,0,0.3)',
-            border: '1px solid var(--glass-border)',
-            borderRadius: '12px',
-            padding: '18px 24px',
-            color: 'var(--text-main)',
-            fontSize: '13px',
-            letterSpacing: '0.1em',
-            outline: 'none',
-            textTransform: 'uppercase'
-          }}
-        />
-        <button 
-          onClick={handleSend}
-          disabled={isThinking}
-          style={{
-            position: 'absolute',
-            right: '16px',
-            top: '50%',
-            transform: 'translateY(-50%)',
-            background: 'var(--emerald)',
-            color: '#000',
-            padding: '10px 20px',
-            borderRadius: '8px',
-            fontSize: '11px',
-            fontWeight: 'bold'
-          }}
-        >
-          {isThinking ? '...' : 'PROMPT'}
-        </button>
+      {/* Right Side History Panel */}
+      <div className="glass" style={{
+        width: '320px',
+        borderLeft: '1px solid var(--glass-border)',
+        display: 'flex',
+        flexDirection: 'column',
+        background: 'rgba(5, 5, 5, 0.4)',
+        backdropFilter: 'blur(40px)'
+      }}>
+        <div style={{ padding: '30px 24px', borderBottom: '1px solid var(--glass-border)' }}>
+          <button 
+            onClick={startNewSession}
+            style={{
+              width: '100%',
+              padding: '14px',
+              borderRadius: '12px',
+              background: 'rgba(20, 184, 166, 0.1)',
+              border: '1px dashed var(--emerald)',
+              color: 'var(--emerald)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '10px',
+              fontSize: '12px',
+              fontWeight: 'bold',
+              cursor: 'pointer',
+              transition: '0.2s'
+            }}
+            onMouseOver={(e) => e.currentTarget.style.background = 'rgba(20, 184, 166, 0.2)'}
+            onMouseOut={(e) => e.currentTarget.style.background = 'rgba(20, 184, 166, 0.1)'}
+          >
+            <Plus size={16} /> NEW ANALYSIS
+          </button>
+        </div>
+
+        <div className="custom-scrollbar" style={{ flex: 1, overflowY: 'auto', padding: '20px 12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0 12px 16px', color: 'var(--text-dim)', fontSize: '10px', fontWeight: 'bold' }}>
+            <History size={12} /> RECENT INTELLIGENCE
+          </div>
+          
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {sessions.map(s => (
+              <div 
+                key={s.id}
+                onClick={() => setActiveSessionId(s.id)}
+                style={{
+                  padding: '16px',
+                  borderRadius: '10px',
+                  background: activeSessionId === s.id ? 'rgba(20, 184, 166, 0.1)' : 'transparent',
+                  border: `1px solid ${activeSessionId === s.id ? 'var(--emerald)' : 'transparent'}`,
+                  cursor: 'pointer',
+                  transition: '0.2s',
+                  position: 'relative'
+                }}
+                className="session-item"
+              >
+                <div style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '12px', 
+                  fontSize: '13px', 
+                  color: activeSessionId === s.id ? '#fff' : 'var(--text-dim)',
+                  fontWeight: activeSessionId === s.id ? '600' : '400',
+                  marginRight: '24px'
+                }}>
+                  <MessageSquare size={14} style={{ color: activeSessionId === s.id ? 'var(--emerald)' : 'var(--text-dim)' }} />
+                  <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.title}</span>
+                </div>
+                <button 
+                  onClick={(e) => deleteSession(s.id, e)}
+                  style={{ 
+                    position: 'absolute', 
+                    right: '12px', 
+                    top: '50%', 
+                    transform: 'translateY(-50%)',
+                    background: 'transparent',
+                    color: 'rgba(239, 68, 68, 0.5)',
+                    padding: '4px'
+                  }}
+                  className="delete-hover"
+                >
+                  <Trash2 size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ padding: '24px', borderTop: '1px solid var(--glass-border)', color: 'var(--text-dim)', fontSize: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', opacity: 0.6 }}>
+            <Clock size={12} /> UPDATED IN REAL-TIME
+          </div>
+        </div>
       </div>
     </div>
   );

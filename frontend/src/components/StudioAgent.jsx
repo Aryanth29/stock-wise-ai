@@ -21,59 +21,54 @@ const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemi
 const SYSTEM_PROMPT = "You are StockWise AI, a professional quant trading assistant for Indian stock markets (BSE, NSE). Be concise, insightful, and conversational like a senior quant mentor.";
 
 export default function StudioAgent() {
-  const [isOpen, setIsOpen] = useState(false);
+  const [activeSessionId, setActiveSessionId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [user, setUser] = useState(null);
   const scrollRef = useRef(null);
 
-  // Auth & Sync Logic
+  // 1. Auth & Latest Session Sync
   useEffect(() => {
-    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
-        // Sync Messages
-        const q = query(
-          collection(db, "users", currentUser.uid, "messages"),
-          orderBy("timestamp", "asc")
+        // Find the most recent active session
+        const sessQuery = query(
+          collection(db, "users", currentUser.uid, "sessions"),
+          orderBy("lastModified", "desc"),
+          limit(1)
         );
         
-        const unsubscribeMessages = onSnapshot(q, (snapshot) => {
-          const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-          // If no messages exists yet, show welcome message (don't save to DB yet)
-          if (msgs.length === 0) {
-            setMessages([{ role: "ai", text: "Hello! I'm StockWise AI — your quant assistant. Ask me anything about stocks, indicators, or market strategy." }]);
-          } else {
-            setMessages(msgs);
+        onSnapshot(sessQuery, (snapshot) => {
+          if (!snapshot.empty) {
+            setActiveSessionId(snapshot.docs[0].id);
           }
         });
-
-        // Cleanup: Remove messages older than 30 days
-        const cleanupOldMessages = async () => {
-          const thirtyDaysAgo = new Date();
-          thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-          
-          const oldQuery = query(
-            collection(db, "users", currentUser.uid, "messages"),
-            where("timestamp", "<", thirtyDaysAgo)
-          );
-          
-          const oldDocs = await getDocs(oldQuery);
-          oldDocs.forEach(async (oldDoc) => {
-            await deleteDoc(doc(db, "users", currentUser.uid, "messages", oldDoc.id));
-          });
-        };
-        cleanupOldMessages();
-
-        return () => unsubscribeMessages();
-      } else {
-        setMessages([{ role: "ai", text: "Please log in to access your quant assistant history." }]);
       }
     });
-
     return () => unsubscribeAuth();
   }, []);
+
+  // 2. Sync Messages for the found session
+  useEffect(() => {
+    if (!user || !activeSessionId) {
+      if (user && !activeSessionId) {
+        setMessages([{ role: "ai", text: "Welcome back! Start a new analysis in the Intelligence Studio or ask me a quick question here." }]);
+      }
+      return;
+    }
+
+    const q = query(
+      collection(db, "users", user.uid, "sessions", activeSessionId, "messages"),
+      orderBy("timestamp", "asc")
+    );
+    
+    return onSnapshot(q, (snapshot) => {
+      const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setMessages(msgs.length > 0 ? msgs : [{ role: "ai", text: "How can I help with your market analysis today?" }]);
+    });
+  }, [user, activeSessionId]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -81,17 +76,56 @@ export default function StudioAgent() {
     }
   }, [messages, isTyping]);
 
+  const generateTitle = async (firstPrompt) => {
+    try {
+      const res = await fetch(GEMINI_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: `Generate a 3-4 word professional title for this stock analysis query. Respond with ONLY the title. No quotes. Query: ${firstPrompt}` }] }]
+        }),
+      });
+      const data = await res.json();
+      return data.candidates?.[0]?.content?.parts?.[0]?.text || 'Studio Analysis';
+    } catch (e) {
+      return 'Market Analysis';
+    }
+  };
+
   const handleSend = async () => {
     if (!input.trim() || isTyping || !user) return;
     const userText = input.trim();
     
-    // 1. Save User Message to Firestore
-    const messagesRef = collection(db, "users", user.uid, "messages");
+    let currentSessionId = activeSessionId;
+    
+    // Create session if none exists
+    if (!currentSessionId) {
+      const newSess = await addDoc(collection(db, "users", user.uid, "sessions"), {
+        title: 'Bubble Analysis...',
+        createdAt: serverTimestamp(),
+        lastModified: serverTimestamp()
+      });
+      currentSessionId = newSess.id;
+      setActiveSessionId(currentSessionId);
+    }
+
+    const messagesRef = collection(db, "users", user.uid, "sessions", currentSessionId, "messages");
+    const sessionRef = doc(db, "users", user.uid, "sessions", currentSessionId);
+    
+    // 1. Save User Message
     await addDoc(messagesRef, {
       role: "user",
       text: userText,
       timestamp: serverTimestamp()
     });
+
+    // Update title if it's the first message + update lastModified
+    if (messages.length <= 1) {
+      const newTitle = await generateTitle(userText);
+      await updateDoc(sessionRef, { title: newTitle, lastModified: serverTimestamp() });
+    } else {
+      await updateDoc(sessionRef, { lastModified: serverTimestamp() });
+    }
 
     setInput("");
     setIsTyping(true);
@@ -105,15 +139,10 @@ export default function StudioAgent() {
         }),
       });
 
-      if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.error?.message || `HTTP ${res.status}`);
-      }
-
       const data = await res.json();
       const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || "No response.";
       
-      // 2. Save AI Response to Firestore
+      // 2. Save AI Response
       await addDoc(messagesRef, {
         role: "ai",
         text: reply,
@@ -122,7 +151,7 @@ export default function StudioAgent() {
 
     } catch (err) {
       console.error("Gemini Error:", err);
-      // We don't save errors to long-term history, just show it
+      // We don't save errors to history, just show it
       setMessages((prev) => [...prev, { role: "ai", text: "I'm having trouble connecting right now. Please try again in a moment." }]);
     } finally {
       setIsTyping(false);
